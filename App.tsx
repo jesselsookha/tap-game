@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const GAME_DURATION = 5;
+const GAME_DURATION = 5; // Game duration in seconds
 
-// Define the type for our score objects
+// Define the type for each high score entry
 type Score = {
   id: string;
   taps: number;
@@ -21,13 +21,14 @@ function renderScoreItem({ item }: { item: Score }) {
   );
 }
 
-function App() {
-  const [taps, setTaps] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState<number>(GAME_DURATION);
-  const [gameActive, setGameActive] = useState<boolean>(false);
-  const [highScores, setHighScores] = useState<Score[]>([]);
 
-  // useEffect to handle the timer logic
+function App() {
+  const [taps, setTaps] = useState<number>(0); // Number of user taps
+  const [timeLeft, setTimeLeft] = useState<number>(GAME_DURATION); // Remaining game time
+  const [gameActive, setGameActive] = useState<boolean>(false); // Is the game currently running?
+  const [highScores, setHighScores] = useState<Score[]>([]); // List of top 5 scores
+
+  // 1 Effect: Timer logic - runs every second while game is active
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
 
@@ -35,110 +36,103 @@ function App() {
       timer = setInterval(() => {
         setTimeLeft(prevTime => prevTime - 1);
       }, 1000);
-    } else if (timeLeft === 0) {
-      setGameActive(false);
-      saveScore(taps); // Call saveScore when the game ends
-    }
+    } 
 
     return () => {
       if (timer) {
         clearInterval(timer);
       }
     };
+  }, [gameActive, timeLeft]); 
 
-  }, [gameActive, timeLeft, taps]); // dependent array updated to monitor 'taps' state variable 
+  // 2 Effect: Detects when the game ends and saves the score
+  useEffect(() => {
+    if (timeLeft === 0 && gameActive) {
+      setGameActive(false);        // End the game
+      saveScore(taps);             // Save the score once
+    }
+  }, [timeLeft]); // Only triggers when timeLeft changes
 
-  // useEffect to load high scores from storage when the app loads
+  // 3 Effect: Load saved high scores from AsyncStorage on first render
   useEffect(() => {
     loadScores();
-  }, []); // empty dependency array 
+  }, []);
 
-  // Function to load scores from AsyncStorage
+  // Loads scores from persistent storage
   const loadScores = async () => {
     try {
       const storedScores = await AsyncStorage.getItem('#highScores');
       if (storedScores !== null) {
-        // Parse the stored JSON string back into an array
-        setHighScores(JSON.parse(storedScores));
+        setHighScores(JSON.parse(storedScores)); // Load and update state
       }
     } catch (e) {
       console.error("Failed to load scores", e);
     }
   };
 
-  // Function to save a new score
+  // Saves the current score to AsyncStorage and updates the top 5 list
   const saveScore = async (newTaps: number) => {
     const now = new Date();
     const newScore: Score = {
-      id: now.getTime().toString(), // Unique ID based on timestamp
+      id: now.getTime().toString(), // Use timestamp as unique ID
       taps: newTaps,
-      date: now.toLocaleString(),
+      date: now.toLocaleString(),   // Save human-readable date
     };
 
-    // this would be the next logical step, but we are choosing to only store the top 5 scores  
-    // setHighScores([...highScores, newScore]); 
- 
-    // So instead of directly saving the newScore into the array using the setter - we are creating a new (temporary) array with the new score and all existing high scores
-
     const updatedScores = [...highScores, newScore];
-    // setHighScores(updatedScores); // this was shown in class 
-    // The above line now takes the temporary array with all the scores and sets it back into the highScores state variable
 
-
-    // Let's consider that there will be too many scores to store 
-    // So instead of storing all - sort the list based on taps &
-    // only store the top 5 scores in the async storage
- 
-    // Sort the scores in descending order based on taps
-    updatedScores.sort((a, b) => b.taps - a.taps);
-
-    // Keep only the top 5 scores using the slice() method
-    const top5Scores = updatedScores.slice(0, 5);
-
-    // Now we use the setter, setHighScores to accept the new temporary array top5Scores to be the new set of highScores
-    setHighScores(top5Scores); // Update state to trigger re-render
+    // Sort and keep top 5 scores
+    const top5Scores = updatedScores.sort((a, b) => b.taps - a.taps).slice(0, 5);
+    setHighScores(top5Scores);
 
     try {
-      // Save the updated top 5 scores to AsyncStorage
       await AsyncStorage.setItem('#highScores', JSON.stringify(top5Scores));
     } catch (e) {
       console.error("Failed to save score", e);
     }
   };
 
+  // Called when user taps the main game button
   const handleTap = () => {
     if (!gameActive) {
+      // Start new game
       setGameActive(true);
       setTaps(1);
+      setTimeLeft(GAME_DURATION);
     } else {
+      // Increment tap count
       setTaps(prevTaps => prevTaps + 1);
     }
   };
 
+  // Reset game state to allow replay
   const handleReset = () => {
     setGameActive(false);
     setTaps(0);
     setTimeLeft(GAME_DURATION);
   };
-  
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Tap Game</Text>
-      
+
       <View style={styles.infoContainer}>
         <Text style={styles.timerText}>Time Left: {timeLeft}s</Text>
         <Text style={styles.scoreText}>Taps: {taps}</Text>
       </View>
 
+      {/* 2 styles applied to same 1 component - 2nd style applied based on condition */}
       <TouchableOpacity 
         style={[styles.button, !gameActive && styles.startButton]} 
         onPress={handleTap}
-        disabled={!gameActive && timeLeft === 0}
+        disabled={!gameActive && timeLeft === 0} // Disable after game ends
       >
-        <Text style={styles.buttonText}>{gameActive ? "TAP" : (timeLeft === 0 ? "GAME OVER" : "START")}</Text>
+        {/* Text display based on nested conditional statement */} 
+        <Text style={styles.buttonText}>
+          {gameActive ? "TAP" : (timeLeft === 0 ? "GAME OVER" : "START")}
+        </Text>
       </TouchableOpacity>
-      
+
       {timeLeft === 0 && (
         <TouchableOpacity style={styles.resetButton} onPress={handleReset}>
           <Text style={styles.buttonText}>RESET</Text>
