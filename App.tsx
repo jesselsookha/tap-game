@@ -1,22 +1,43 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const GAME_DURATION = 5; // The duration of the game in seconds
+const GAME_DURATION = 5;
+
+// Define the type for our score objects
+type Score = {
+  id: string;
+  taps: number;
+  date: string;
+};
+
+// User-defined component to render each score item for the FlatList
+function renderScoreItem({ item }: { item: Score }) {
+  return (
+    <View style={styles.scoreItem}>
+      <Text style={styles.scoreItemText}>Taps: {item.taps}</Text>
+      <Text style={styles.scoreItemText}>Date: {item.date}</Text>
+    </View>
+  );
+}
 
 function App() {
   const [taps, setTaps] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(GAME_DURATION);
   const [gameActive, setGameActive] = useState<boolean>(false);
+  const [highScores, setHighScores] = useState<Score[]>([]);
 
   // useEffect to handle the timer logic
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
+
     if (gameActive && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft(prevTime => prevTime - 1);
       }, 1000);
     } else if (timeLeft === 0) {
       setGameActive(false);
+      saveScore(taps); // Call saveScore when the game ends
     }
 
     return () => {
@@ -24,7 +45,66 @@ function App() {
         clearInterval(timer);
       }
     };
-  }, [gameActive, timeLeft]); // useEffect dependent on gameActive and timeLeft state variables
+
+  }, [gameActive, timeLeft, taps]); // dependent array updated to monitor 'taps' state variable 
+
+  // useEffect to load high scores from storage when the app loads
+  useEffect(() => {
+    loadScores();
+  }, []); // empty dependency array 
+
+  // Function to load scores from AsyncStorage
+  const loadScores = async () => {
+    try {
+      const storedScores = await AsyncStorage.getItem('#highScores');
+      if (storedScores !== null) {
+        // Parse the stored JSON string back into an array
+        setHighScores(JSON.parse(storedScores));
+      }
+    } catch (e) {
+      console.error("Failed to load scores", e);
+    }
+  };
+
+  // Function to save a new score
+  const saveScore = async (newTaps: number) => {
+    const now = new Date();
+    const newScore: Score = {
+      id: now.getTime().toString(), // Unique ID based on timestamp
+      taps: newTaps,
+      date: now.toLocaleString(),
+    };
+
+    // this would be the next logical step, but we are choosing to only store the top 5 scores  
+    // setHighScores([...highScores, newScore]); 
+ 
+    // So instead of directly saving the newScore into the array using the setter - we are creating a new (temporary) array with the new score and all existing high scores
+
+    const updatedScores = [...highScores, newScore];
+    // setHighScores(updatedScores); // this was shown in class 
+    // The above line now takes the temporary array with all the scores and sets it back into the highScores state variable
+
+
+    // Let's consider that there will be too many scores to store 
+    // So instead of storing all - sort the list based on taps &
+    // only store the top 5 scores in the async storage
+ 
+    // Sort the scores in descending order based on taps
+    updatedScores.sort((a, b) => b.taps - a.taps);
+
+    // Keep only the top 5 scores using the slice() method
+    const top5Scores = updatedScores.slice(0, 5);
+
+    // Now we use the setter, setHighScores to accept the new temporary array top5Scores to be the new set of highScores
+    setHighScores(top5Scores); // Update state to trigger re-render
+
+    try {
+      // Save the updated top 5 scores to AsyncStorage
+      await AsyncStorage.setItem('#highScores', JSON.stringify(top5Scores));
+    } catch (e) {
+      console.error("Failed to save score", e);
+    }
+  };
 
   const handleTap = () => {
     if (!gameActive) {
@@ -40,6 +120,7 @@ function App() {
     setTaps(0);
     setTimeLeft(GAME_DURATION);
   };
+  
 
   return (
     <View style={styles.container}>
@@ -63,6 +144,14 @@ function App() {
           <Text style={styles.buttonText}>RESET</Text>
         </TouchableOpacity>
       )}
+
+      <Text style={styles.highScoresTitle}>High Scores</Text>
+      <FlatList
+        data={highScores}
+        renderItem={renderScoreItem}
+        keyExtractor={item => item.id}
+        style={styles.list}
+      />
     </View>
   );
 }
@@ -121,6 +210,28 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: '#dc3545',
     borderRadius: 5,
+  },
+  highScoresTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 30,
+    marginBottom: 10,
+    color: '#333',
+  },
+  list: {
+    width: '100%',
+  },
+  scoreItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 10,
+    backgroundColor: '#eee',
+    borderRadius: 5,
+    marginBottom: 5,
+  },
+  scoreItemText: {
+    fontSize: 16,
+    color: '#555',
   },
 });
 
