@@ -79,17 +79,20 @@ function App() {
       date: now.toLocaleString(),   // Save human-readable date
     };
 
-    const updatedScores = [...highScores, newScore];
+    // Use the functional updater so the new array is built from the
+    // freshest highScores React has, not from a value captured in an
+    // older render.
+    setHighScores(prevScores => {
+      const updatedScores = [...prevScores, newScore];
+      const top5Scores = updatedScores.sort((a, b) => b.taps - a.taps).slice(0, 5);
 
-    // Sort and keep top 5 scores
-    const top5Scores = updatedScores.sort((a, b) => b.taps - a.taps).slice(0, 5);
-    setHighScores(top5Scores);
+      // Write to AsyncStorage from inside the updater so the value
+      // persisted matches the value that was just committed to state.
+      AsyncStorage.setItem('#highScores', JSON.stringify(top5Scores))
+        .catch(e => console.error("Failed to save score", e));
 
-    try {
-      await AsyncStorage.setItem('#highScores', JSON.stringify(top5Scores));
-    } catch (e) {
-      console.error("Failed to save score", e);
-    }
+      return top5Scores;
+    });
   };
 
   // Called when user taps the main game button
